@@ -3,82 +3,100 @@ package models;
 import enums.TeacherTitle;
 import academic.Course;
 import academic.Mark;
-import interfaces.Researcher;
+import exceptions.NotResearcherException;
+import research.Researcher;
+import research.ResearchPaper;
+import research.ResearchProject;
+
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Teacher is an Employee that may also be a Researcher.
+ * Only PROFESSOR / ASSOCIATE_PROFESSOR are flagged as researchers by default,
+ * but the flag can be changed via setResearcher(...).
+ */
 public class Teacher extends Employee implements Researcher {
+    private static final long serialVersionUID = 1L;
+
     private TeacherTitle title;
     private List<Course> courses;
     private double rating;
-    
-    private boolean isResearcher;
-    
-    private List<Object> papers = new ArrayList<>();
-    private List<Object> projects = new ArrayList<>();
+    private boolean researcher;
 
-    public Teacher(String login, String password, double salary, String department, TeacherTitle title) {
+    private List<ResearchPaper> papers;
+    private List<ResearchProject> projects;
+
+    public Teacher(String login, String password,
+                   double salary, String department,
+                   TeacherTitle title) {
         super(login, password, salary, department);
         this.title = title;
         this.courses = new ArrayList<>();
         this.rating = 0.0;
-        
-        this.isResearcher = (title == TeacherTitle.PROFESSOR);
+        this.papers = new ArrayList<>();
+        this.projects = new ArrayList<>();
+        this.researcher = (title == TeacherTitle.PROFESSOR
+                        || title == TeacherTitle.ASSOCIATE_PROFESSOR);
     }
 
-    public void setAsResearcher(boolean isResearcher) {
-        this.isResearcher = isResearcher;
-    }
+    public void setResearcher(boolean researcher) { this.researcher = researcher; }
+    public boolean isResearcher() { return researcher; }
 
-    public boolean isResearcher() {
-        return isResearcher;
-    }
-
+    // ----- Researcher interface -----
 
     @Override
-    public void addPaper(Object p) {
-        if (isResearcher) {
-            this.papers.add(p);
-            System.out.println("Статья успешно добавлена.");
-        } else {
-            System.out.println("Ошибка: У вас нет прав исследователя.");
+    public void addPaper(ResearchPaper p) {
+        if (!researcher) {
+            throw new NotResearcherException(
+                getLogin() + " is not a Researcher!");
         }
+        this.papers.add(p);
+        System.out.println("Paper added by " + getLogin() + ": " + p.getTitle());
     }
 
     @Override
-    public void joinProject(Object p) {
-        if (isResearcher) {
-            this.projects.add(p);
-            System.out.println("Успешно добавлено в проект.");
-        } else {
-            System.out.println("Ошибка: Только исследователи могут участвовать в проектах.");
+    public void joinProject(ResearchProject p) {
+        if (!researcher) {
+            throw new NotResearcherException(
+                getLogin() + " is not a Researcher!");
         }
+        p.addParticipant(this);
+        this.projects.add(p);
     }
 
     @Override
-    public void printPapers(Object c) {
-        if (isResearcher) {
-            
-        }
+    public void printPapers(Comparator<ResearchPaper> c) {
+        papers.stream().sorted(c).forEach(System.out::println);
     }
 
+    /**
+     * Standard h-index: largest h such that at least h papers
+     * have >= h citations each.
+     */
     @Override
     public int calculateHIndex() {
-        if (isResearcher) return 0;
-        return 0;
+        if (!researcher || papers.isEmpty()) return 0;
+        List<Integer> cites = new ArrayList<>();
+        for (ResearchPaper p : papers) cites.add(p.getCitations());
+        Collections.sort(cites, Collections.reverseOrder());
+        int h = 0;
+        for (int i = 0; i < cites.size(); i++) {
+            if (cites.get(i) >= i + 1) h = i + 1;
+            else break;
+        }
+        return h;
     }
 
     @Override
-    public List<Object> getProjects() {
-        return isResearcher ? this.projects : new ArrayList<>();
-    }
+    public List<ResearchProject> getProjects() { return projects; }
 
     @Override
-    public List<Object> getPapers() {
-        return isResearcher ? this.papers : new ArrayList<>();
-    }
+    public List<ResearchPaper> getPapers() { return papers; }
 
-  
+    // ----- Teacher-only behaviour -----
 
     public void putMark(Student s, Course c, Mark mark) {
         s.getTranscript().add(mark);
@@ -96,9 +114,15 @@ public class Teacher extends Employee implements Researcher {
     }
 
     public TeacherTitle getTitle() { return title; }
+    public List<Course> getCourses() { return courses; }
+    public double getRating() { return rating; }
+    public void setRating(double rating) { this.rating = rating; }
 
     @Override
     public String getInfo() {
-        return "Teacher: " + getLogin() + ", Title: " + title + ", Is Researcher: " + isResearcher;
+        return "Teacher: " + getLogin()
+             + ", Title: " + title
+             + ", Researcher: " + researcher
+             + ", H-index: " + calculateHIndex();
     }
 }
